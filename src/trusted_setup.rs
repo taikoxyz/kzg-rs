@@ -1,55 +1,73 @@
-use crate::{enums::KzgError, NUM_G1_POINTS, NUM_G2_POINTS, NUM_ROOTS_OF_UNITY};
+use crate::{
+    enums::KzgError, BYTES_PER_FIELD_ELEMENT, BYTES_PER_G1_POINT, BYTES_PER_G2_POINT,
+    NUM_G1_POINTS, NUM_G2_POINTS, NUM_ROOTS_OF_UNITY,
+};
 
 use crate::bls12_381::{G1Affine, G2Affine, Scalar};
-use alloc::sync::Arc;
+use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use core::{
+    convert::TryInto,
     hash::{Hash, Hasher},
-    slice,
 };
 use spin::Once;
 
-#[repr(C, align(64))]
-struct AlignedBytes<const N: usize>([u8; N]);
-
-macro_rules! include_aligned_bytes {
-    ($path:expr) => {{
-        static BYTES: AlignedBytes<{ include_bytes!($path).len() }> =
-            AlignedBytes(*include_bytes!($path));
-        &BYTES.0
-    }};
-}
-
-fn typed_setup_slice<T>(bytes: &'static [u8], len: usize, label: &str) -> &'static [T] {
+fn decode_setup_slice<T, const BYTES_PER_ITEM: usize>(
+    bytes: &'static [u8],
+    len: usize,
+    label: &str,
+    mut decode: impl FnMut(&[u8; BYTES_PER_ITEM]) -> T,
+) -> &'static [T] {
     assert_eq!(
         bytes.len(),
-        len * core::mem::size_of::<T>(),
+        len * BYTES_PER_ITEM,
         "invalid trusted setup byte length for {label}"
     );
 
-    unsafe { slice::from_raw_parts(bytes.as_ptr().cast::<T>(), len) }
+    let values = bytes
+        .chunks_exact(BYTES_PER_ITEM)
+        .map(|chunk| decode(chunk.try_into().expect("checked chunk size")))
+        .collect::<Vec<_>>();
+    Box::leak(values.into_boxed_slice())
 }
 
 pub fn get_roots_of_unity() -> &'static [Scalar] {
     static ROOTS_OF_UNITY: Once<&'static [Scalar]> = Once::new();
     ROOTS_OF_UNITY.call_once(|| {
-        let bytes = include_aligned_bytes!(concat!(env!("OUT_DIR"), "/roots_of_unity.bin"));
-        typed_setup_slice::<Scalar>(bytes, NUM_ROOTS_OF_UNITY, "roots_of_unity")
+        let bytes = include_bytes!(concat!(env!("OUT_DIR"), "/roots_of_unity.bin"));
+        decode_setup_slice::<Scalar, BYTES_PER_FIELD_ELEMENT>(
+            bytes,
+            NUM_ROOTS_OF_UNITY,
+            "roots_of_unity",
+            |bytes| {
+                Scalar::from_bytes(bytes)
+                    .into_option()
+                    .expect("invalid root of unity bytes")
+            },
+        )
     })
 }
 
 pub fn get_g1_points() -> &'static [G1Affine] {
     static G1_POINTS: Once<&'static [G1Affine]> = Once::new();
     G1_POINTS.call_once(|| {
-        let bytes = include_aligned_bytes!(concat!(env!("OUT_DIR"), "/g1.bin"));
-        typed_setup_slice::<G1Affine>(bytes, NUM_G1_POINTS, "g1")
+        let bytes = include_bytes!(concat!(env!("OUT_DIR"), "/g1.bin"));
+        decode_setup_slice::<G1Affine, BYTES_PER_G1_POINT>(bytes, NUM_G1_POINTS, "g1", |bytes| {
+            G1Affine::from_compressed_unchecked(bytes)
+                .into_option()
+                .expect("invalid g1 trusted setup bytes")
+        })
     })
 }
 
 pub fn get_g2_points() -> &'static [G2Affine] {
     static G2_POINTS: Once<&'static [G2Affine]> = Once::new();
     G2_POINTS.call_once(|| {
-        let bytes = include_aligned_bytes!(concat!(env!("OUT_DIR"), "/g2.bin"));
-        typed_setup_slice::<G2Affine>(bytes, NUM_G2_POINTS, "g2")
+        let bytes = include_bytes!(concat!(env!("OUT_DIR"), "/g2.bin"));
+        decode_setup_slice::<G2Affine, BYTES_PER_G2_POINT>(bytes, NUM_G2_POINTS, "g2", |bytes| {
+            G2Affine::from_compressed_unchecked(bytes)
+                .into_option()
+                .expect("invalid g2 trusted setup bytes")
+        })
     })
 }
 
