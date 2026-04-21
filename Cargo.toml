@@ -10,7 +10,12 @@ repository = "https://github.com/succinctlabs/kzg-rs"
 [dependencies]
 hex = { version = "0.4.3", default-features = false, features = ["alloc"] }
 
-bls12_381 = { version = "=0.8.0-sp1-6.0.0", package = "sp1_bls12_381", default-features = false, features = [
+bls12_381_sp1 = { version = "=0.8.0-sp1-6.0.0", package = "sp1_bls12_381", optional = true, default-features = false, features = [
+    "groups",
+    "pairings",
+    "alloc",
+] }
+bls12_381_std = { version = "0.8", package = "bls12_381", optional = true, default-features = false, features = [
     "groups",
     "pairings",
     "alloc",
@@ -31,7 +36,12 @@ serde_derive = "1.0"
 serde = { version = "^1.0", features = ["derive"] }
 
 [build-dependencies]
-bls12_381 = { version = "=0.8.0-sp1-6.0.0", package = "sp1_bls12_381", default-features = false, features = [
+bls12_381_sp1 = { version = "=0.8.0-sp1-6.0.0", package = "sp1_bls12_381", optional = true, default-features = false, features = [
+    "groups",
+    "pairings",
+    "alloc",
+] }
+bls12_381_std = { version = "0.8", package = "bls12_381", optional = true, default-features = false, features = [
     "groups",
     "pairings",
     "alloc",
@@ -39,5 +49,8 @@ bls12_381 = { version = "=0.8.0-sp1-6.0.0", package = "sp1_bls12_381", default-f
 hex = "0.4.3"
 
 [features]
+default = ["sp1"]
 rkyv = ["dep:rkyv"]
 serde = ["dep:serde"]
+sp1 = ["dep:bls12_381_sp1"]
+standard = ["dep:bls12_381_std"]

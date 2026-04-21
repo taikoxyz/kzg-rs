@@ -2,6 +2,18 @@
 #[macro_use]
 extern crate alloc;
 
+#[cfg(all(feature = "sp1", feature = "standard"))]
+compile_error!("features `sp1` and `standard` are mutually exclusive");
+
+#[cfg(not(any(feature = "sp1", feature = "standard")))]
+compile_error!("enable exactly one BLS backend feature: `sp1` or `standard`");
+
+#[cfg(feature = "sp1")]
+pub(crate) use bls12_381_sp1 as bls12_381;
+
+#[cfg(feature = "standard")]
+pub(crate) use bls12_381_std as bls12_381;
+
 pub mod consts;
 pub mod dtypes;
 pub mod enums;

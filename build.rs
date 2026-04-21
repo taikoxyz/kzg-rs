@@ -1,5 +1,17 @@
 const TRUSTED_SETUP_FILE: &str = include_str!("src/trusted_setup.txt");
 
+#[cfg(all(feature = "sp1", feature = "standard"))]
+compile_error!("features `sp1` and `standard` are mutually exclusive");
+
+#[cfg(not(any(feature = "sp1", feature = "standard")))]
+compile_error!("enable exactly one BLS backend feature: `sp1` or `standard`");
+
+#[cfg(feature = "sp1")]
+pub(crate) use bls12_381_sp1 as bls12_381;
+
+#[cfg(feature = "standard")]
+pub(crate) use bls12_381_std as bls12_381;
+
 include!("src/enums.rs");
 include!("src/consts.rs");
 include!("src/pairings.rs");

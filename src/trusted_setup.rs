@@ -1,7 +1,7 @@
 use crate::{enums::KzgError, NUM_G1_POINTS, NUM_ROOTS_OF_UNITY};
 
+use crate::bls12_381::{G1Affine, G2Affine, Scalar};
 use alloc::sync::Arc;
-use bls12_381::{G1Affine, G2Affine, Scalar};
 use core::{
     hash::{Hash, Hasher},
     mem::transmute,
