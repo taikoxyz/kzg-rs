@@ -1,5 +1,17 @@
 const TRUSTED_SETUP_FILE: &str = include_str!("src/trusted_setup.txt");
 
+#[cfg(all(feature = "sp1", feature = "standard"))]
+compile_error!("features `sp1` and `standard` are mutually exclusive");
+
+#[cfg(not(any(feature = "sp1", feature = "standard")))]
+compile_error!("enable exactly one BLS backend feature: `sp1` or `standard`");
+
+#[cfg(feature = "sp1")]
+pub(crate) use bls12_381_sp1 as bls12_381;
+
+#[cfg(feature = "standard")]
+pub(crate) use bls12_381_std as bls12_381;
+
 include!("src/enums.rs");
 include!("src/consts.rs");
 include!("src/pairings.rs");
@@ -192,17 +204,16 @@ fn main() {
     let mut g1_bytes: Vec<u8> = Vec::new();
     let mut g2_bytes: Vec<u8> = Vec::new();
 
-    roots_of_unity.iter().for_each(|&v| {
-        roots_of_unity_bytes
-            .extend_from_slice(unsafe { &std::mem::transmute::<Scalar, [u8; 32]>(v) });
+    roots_of_unity.iter().for_each(|v| {
+        roots_of_unity_bytes.extend_from_slice(&v.to_bytes());
     });
 
-    g1_points.iter().for_each(|&v| {
-        g1_bytes.extend_from_slice(unsafe { &std::mem::transmute::<G1Affine, [u8; 104]>(v) });
+    g1_points.iter().for_each(|v| {
+        g1_bytes.extend_from_slice(&v.to_compressed());
     });
 
-    g2_points.iter().for_each(|&v| {
-        g2_bytes.extend_from_slice(unsafe { &std::mem::transmute::<G2Affine, [u8; 200]>(v) });
+    g2_points.iter().for_each(|v| {
+        g2_bytes.extend_from_slice(&v.to_compressed());
     });
 
     let mut roots_of_unity_file = fs::OpenOptions::new()
