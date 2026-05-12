@@ -9,8 +9,8 @@ use crate::{
     NUM_FIELD_ELEMENTS_PER_BLOB, RANDOM_CHALLENGE_KZG_BATCH_DOMAIN,
 };
 
-use crate::bls12_381::{G1Affine, G1Projective, G2Affine, G2Projective, Scalar};
 use alloc::{string::ToString, vec::Vec};
+use bls12_381::{G1Affine, G1Projective, G2Affine, G2Projective, Scalar};
 use ff::derive::sbb;
 use sha2::{Digest, Sha256};
 
@@ -222,23 +222,6 @@ pub fn verify_kzg_proof_impl(
     ))
 }
 
-fn msm_variable_base(points: &[G1Projective], scalars: &[Scalar]) -> G1Projective {
-    #[cfg(feature = "sp1")]
-    {
-        G1Projective::msm_variable_base(points, scalars)
-    }
-
-    #[cfg(feature = "standard")]
-    {
-        points
-            .iter()
-            .zip(scalars)
-            .fold(G1Projective::identity(), |acc, (point, scalar)| {
-                acc + (*point * *scalar)
-            })
-    }
-}
-
 pub fn validate_batched_input(
     commitment: &[G1Affine],
     proofs: &[G1Affine],
@@ -433,7 +416,7 @@ impl KzgProof {
         let proofs = proofs.iter().map(Into::into).collect::<Vec<_>>();
 
         // Compute proof linear combination
-        let proof_lincomb = msm_variable_base(&proofs, &r_powers);
+        let proof_lincomb = G1Projective::msm_variable_base(&proofs, &r_powers);
 
         // Compute c_minus_y and r_times_z
         for i in 0..n {
@@ -443,8 +426,8 @@ impl KzgProof {
         }
 
         // Compute proof_z_lincomb and c_minus_y_lincomb
-        let proof_z_lincomb = msm_variable_base(&proofs, &r_times_z);
-        let c_minus_y_lincomb = msm_variable_base(&c_minus_y, &r_powers);
+        let proof_z_lincomb = G1Projective::msm_variable_base(&proofs, &r_times_z);
+        let c_minus_y_lincomb = G1Projective::msm_variable_base(&c_minus_y, &r_powers);
 
         // Compute rhs_g1
         let rhs_g1 = c_minus_y_lincomb + proof_z_lincomb;
