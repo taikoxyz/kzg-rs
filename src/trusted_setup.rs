@@ -23,10 +23,10 @@ fn decode_setup_slice<T, const BYTES_PER_ITEM: usize>(
         "invalid trusted setup byte length for {label}"
     );
 
-    let values = bytes
-        .chunks_exact(BYTES_PER_ITEM)
-        .map(|chunk| decode(chunk.try_into().expect("checked chunk size")))
-        .collect::<Vec<_>>();
+    let mut values = Vec::with_capacity(len);
+    for chunk in bytes.chunks_exact(BYTES_PER_ITEM) {
+        values.push(decode(chunk.try_into().expect("checked chunk size")));
+    }
     Box::leak(values.into_boxed_slice())
 }
 
@@ -52,7 +52,7 @@ pub fn get_g1_points() -> &'static [G1Affine] {
     G1_POINTS.call_once(|| {
         let bytes = include_bytes!(concat!(env!("OUT_DIR"), "/g1.bin"));
         decode_setup_slice::<G1Affine, BYTES_PER_G1_POINT>(bytes, NUM_G1_POINTS, "g1", |bytes| {
-            G1Affine::from_compressed_unchecked(bytes)
+            G1Affine::from_compressed(bytes)
                 .into_option()
                 .expect("invalid g1 trusted setup bytes")
         })
@@ -64,7 +64,7 @@ pub fn get_g2_points() -> &'static [G2Affine] {
     G2_POINTS.call_once(|| {
         let bytes = include_bytes!(concat!(env!("OUT_DIR"), "/g2.bin"));
         decode_setup_slice::<G2Affine, BYTES_PER_G2_POINT>(bytes, NUM_G2_POINTS, "g2", |bytes| {
-            G2Affine::from_compressed_unchecked(bytes)
+            G2Affine::from_compressed(bytes)
                 .into_option()
                 .expect("invalid g2 trusted setup bytes")
         })

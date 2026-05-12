@@ -222,20 +222,31 @@ pub fn verify_kzg_proof_impl(
     ))
 }
 
-fn msm_variable_base(points: &[G1Projective], scalars: &[Scalar]) -> G1Projective {
+fn msm_variable_base(
+    points: &[G1Projective],
+    scalars: &[Scalar],
+) -> Result<G1Projective, KzgError> {
+    if points.len() != scalars.len() {
+        return Err(KzgError::BadArgs(format!(
+            "MSM points and scalars must have the same length: {} != {}",
+            points.len(),
+            scalars.len()
+        )));
+    }
+
     #[cfg(feature = "sp1")]
     {
-        G1Projective::msm_variable_base(points, scalars)
+        Ok(G1Projective::msm_variable_base(points, scalars))
     }
 
     #[cfg(feature = "standard")]
     {
-        points
+        Ok(points
             .iter()
             .zip(scalars)
             .fold(G1Projective::identity(), |acc, (point, scalar)| {
                 acc + (*point * *scalar)
-            })
+            }))
     }
 }
 
@@ -433,7 +444,7 @@ impl KzgProof {
         let proofs = proofs.iter().map(Into::into).collect::<Vec<_>>();
 
         // Compute proof linear combination
-        let proof_lincomb = msm_variable_base(&proofs, &r_powers);
+        let proof_lincomb = msm_variable_base(&proofs, &r_powers)?;
 
         // Compute c_minus_y and r_times_z
         for i in 0..n {
@@ -443,8 +454,8 @@ impl KzgProof {
         }
 
         // Compute proof_z_lincomb and c_minus_y_lincomb
-        let proof_z_lincomb = msm_variable_base(&proofs, &r_times_z);
-        let c_minus_y_lincomb = msm_variable_base(&c_minus_y, &r_powers);
+        let proof_z_lincomb = msm_variable_base(&proofs, &r_times_z)?;
+        let c_minus_y_lincomb = msm_variable_base(&c_minus_y, &r_powers)?;
 
         // Compute rhs_g1
         let rhs_g1 = c_minus_y_lincomb + proof_z_lincomb;
@@ -792,5 +803,14 @@ pub mod tests {
             format!("{y}"),
             "0x1bdfc5da40334b9c51220e8cbea1679c20a7f32dd3d7f3c463149bb4b41a7d18"
         );
+    }
+
+    #[test]
+    pub fn test_msm_variable_base_rejects_length_mismatch() {
+        let points = [G1Projective::generator()];
+        let scalars = [];
+
+        let err = msm_variable_base(&points, &scalars).expect_err("length mismatch must fail");
+        assert!(matches!(err, KzgError::BadArgs(message) if message.contains("same length")));
     }
 }
