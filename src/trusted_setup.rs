@@ -1,19 +1,49 @@
-use crate::{enums::KzgError, NUM_G1_POINTS, NUM_ROOTS_OF_UNITY};
+use crate::{
+    enums::KzgError, BYTES_PER_FIELD_ELEMENT, BYTES_PER_G1_POINT, BYTES_PER_G2_POINT,
+    NUM_G1_POINTS, NUM_G2_POINTS, NUM_ROOTS_OF_UNITY,
+};
 
-use alloc::sync::Arc;
-use bls12_381::{G1Affine, G2Affine, Scalar};
+use crate::bls12_381::{G1Affine, G2Affine, Scalar};
+use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use core::{
+    convert::TryInto,
     hash::{Hash, Hasher},
-    mem::transmute,
-    slice,
 };
 use spin::Once;
+
+fn decode_setup_slice<T, const BYTES_PER_ITEM: usize>(
+    bytes: &'static [u8],
+    len: usize,
+    label: &str,
+    mut decode: impl FnMut(&[u8; BYTES_PER_ITEM]) -> T,
+) -> &'static [T] {
+    assert_eq!(
+        bytes.len(),
+        len * BYTES_PER_ITEM,
+        "invalid trusted setup byte length for {label}"
+    );
+
+    let mut values = Vec::with_capacity(len);
+    for chunk in bytes.chunks_exact(BYTES_PER_ITEM) {
+        values.push(decode(chunk.try_into().expect("checked chunk size")));
+    }
+    Box::leak(values.into_boxed_slice())
+}
 
 pub fn get_roots_of_unity() -> &'static [Scalar] {
     static ROOTS_OF_UNITY: Once<&'static [Scalar]> = Once::new();
     ROOTS_OF_UNITY.call_once(|| {
         let bytes = include_bytes!(concat!(env!("OUT_DIR"), "/roots_of_unity.bin"));
-        unsafe { transmute(slice::from_raw_parts(bytes.as_ptr(), NUM_ROOTS_OF_UNITY)) }
+        decode_setup_slice::<Scalar, BYTES_PER_FIELD_ELEMENT>(
+            bytes,
+            NUM_ROOTS_OF_UNITY,
+            "roots_of_unity",
+            |bytes| {
+                Scalar::from_bytes(bytes)
+                    .into_option()
+                    .expect("invalid root of unity bytes")
+            },
+        )
     })
 }
 
@@ -21,7 +51,11 @@ pub fn get_g1_points() -> &'static [G1Affine] {
     static G1_POINTS: Once<&'static [G1Affine]> = Once::new();
     G1_POINTS.call_once(|| {
         let bytes = include_bytes!(concat!(env!("OUT_DIR"), "/g1.bin"));
-        unsafe { transmute(slice::from_raw_parts(bytes.as_ptr(), NUM_G1_POINTS)) }
+        decode_setup_slice::<G1Affine, BYTES_PER_G1_POINT>(bytes, NUM_G1_POINTS, "g1", |bytes| {
+            G1Affine::from_compressed(bytes)
+                .into_option()
+                .expect("invalid g1 trusted setup bytes")
+        })
     })
 }
 
@@ -29,7 +63,35 @@ pub fn get_g2_points() -> &'static [G2Affine] {
     static G2_POINTS: Once<&'static [G2Affine]> = Once::new();
     G2_POINTS.call_once(|| {
         let bytes = include_bytes!(concat!(env!("OUT_DIR"), "/g2.bin"));
-        unsafe { transmute(slice::from_raw_parts(bytes.as_ptr(), NUM_G1_POINTS)) }
+        decode_setup_slice::<G2Affine, BYTES_PER_G2_POINT>(bytes, NUM_G2_POINTS, "g2", |bytes| {
+            G2Affine::from_compressed(bytes)
+                .into_option()
+                .expect("invalid g2 trusted setup bytes")
+        })
+    })
+}
+
+/// Returns the G2 setup prefix used by KZG proof verification.
+///
+/// Verification only addresses indices 0 and 1. Keeping this separate from
+/// [`get_g2_points`] avoids decoding the remaining setup points in verifier-only
+/// programs such as zkVM guests.
+pub fn get_g2_verification_points() -> &'static [G2Affine] {
+    const VERIFICATION_POINT_COUNT: usize = 2;
+    static G2_VERIFICATION_POINTS: Once<&'static [G2Affine]> = Once::new();
+    G2_VERIFICATION_POINTS.call_once(|| {
+        let bytes = include_bytes!(concat!(env!("OUT_DIR"), "/g2.bin"));
+        let bytes = &bytes[..VERIFICATION_POINT_COUNT * BYTES_PER_G2_POINT];
+        decode_setup_slice::<G2Affine, BYTES_PER_G2_POINT>(
+            bytes,
+            VERIFICATION_POINT_COUNT,
+            "g2 verification prefix",
+            |bytes| {
+                G2Affine::from_compressed(bytes)
+                    .into_option()
+                    .expect("invalid g2 trusted setup bytes")
+            },
+        )
     })
 }
 
@@ -94,5 +156,18 @@ impl EnvKzgSettings {
 impl KzgSettings {
     pub fn load_trusted_setup_file() -> Result<Self, KzgError> {
         Ok(get_kzg_settings())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn verification_points_match_full_setup_prefix() {
+        let verification_points = get_g2_verification_points();
+
+        assert_eq!(verification_points.len(), 2);
+        assert_eq!(verification_points, &get_g2_points()[..2]);
     }
 }

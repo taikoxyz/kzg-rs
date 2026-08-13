@@ -1,8 +1,8 @@
+use crate::bls12_381::Scalar;
 use crate::enums::KzgError;
 use crate::kzg_proof::safe_scalar_affine_from_bytes;
 use crate::{BYTES_PER_BLOB, BYTES_PER_FIELD_ELEMENT};
 use alloc::{string::ToString, vec::Vec};
-use bls12_381::Scalar;
 
 macro_rules! define_bytes_type {
     ($name:ident, $size:expr) => {
