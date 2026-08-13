@@ -71,6 +71,30 @@ pub fn get_g2_points() -> &'static [G2Affine] {
     })
 }
 
+/// Returns the G2 setup prefix used by KZG proof verification.
+///
+/// Verification only addresses indices 0 and 1. Keeping this separate from
+/// [`get_g2_points`] avoids decoding the remaining setup points in verifier-only
+/// programs such as zkVM guests.
+pub fn get_g2_verification_points() -> &'static [G2Affine] {
+    const VERIFICATION_POINT_COUNT: usize = 2;
+    static G2_VERIFICATION_POINTS: Once<&'static [G2Affine]> = Once::new();
+    G2_VERIFICATION_POINTS.call_once(|| {
+        let bytes = include_bytes!(concat!(env!("OUT_DIR"), "/g2.bin"));
+        let bytes = &bytes[..VERIFICATION_POINT_COUNT * BYTES_PER_G2_POINT];
+        decode_setup_slice::<G2Affine, BYTES_PER_G2_POINT>(
+            bytes,
+            VERIFICATION_POINT_COUNT,
+            "g2 verification prefix",
+            |bytes| {
+                G2Affine::from_compressed(bytes)
+                    .into_option()
+                    .expect("invalid g2 trusted setup bytes")
+            },
+        )
+    })
+}
+
 pub fn get_kzg_settings() -> KzgSettings {
     KzgSettings {
         roots_of_unity: get_roots_of_unity(),
@@ -132,5 +156,18 @@ impl EnvKzgSettings {
 impl KzgSettings {
     pub fn load_trusted_setup_file() -> Result<Self, KzgError> {
         Ok(get_kzg_settings())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn verification_points_match_full_setup_prefix() {
+        let verification_points = get_g2_verification_points();
+
+        assert_eq!(verification_points.len(), 2);
+        assert_eq!(verification_points, &get_g2_points()[..2]);
     }
 }
